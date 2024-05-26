@@ -22,22 +22,25 @@ main:
 
 	  Ldi R20,0x01		;Enable INT0 - 0b00000001
 	  Out EIMSK,R20		;External Interrupt MaSK
-	  Sei 				;Enable global interrupt  
+	  sei 				;Enable global interrupt  
 
 	  LDI R26, 48		;setup value to add for ASCII (0-9)
 
 	  Sbi PORTD,2 		;Activated pull-up 
+	  LDI	R16, (1<<SPE)
+	  OUT	SPCR, R16		  ;enable SPI as slave
       LDI   R16, 0xFF
       OUT   DDRD, R16         ;set port D o/p for data
-      OUT   DDRB, R16         ;set port B o/p for command
+	  CBI	DDRD, 2			  ;set pin D2 as input for interrupt
+      SBI	DDRB, 0
+      SBI   DDRB, 1			  ;set pin 0 and 1 of port B o/p for command
+	  SBI	DDRC, 5			  ;set output for fan
       CBI   PORTB, 0          ;EN = 0
       RCALL delay_ms          ;wait for LCD power on
       ;-----------------------------------------------------
       RCALL LCD_init          ;subroutine to initialize LCD
 	  LDI R18, 0x01
       ;----------------------------------------------------
-
-      ;-----------------------------------------------------
       LDI   R16, 0xC0         ;cursor beginning of 2nd line
       RCALL command_wrt       ;send command code
       RCALL delay_ms
@@ -67,10 +70,25 @@ dht_agn:
 	  RCALL DHT11_reading ;read humidity (1st byte of 40-bit data) (unused)
 	  RCALL DHT11_reading
 	  RCALL DHT11_reading ;read temp (3rd byte of 40-bit data)
+
+	  MOV	R25, R19
+	  CP    R25, R24		  ;check for byte 0x1E
+	  BRGE	turn_on      	  ;turn on fan
+	  RCALL	turn_off		  ;turn off fan
+
+done: MOV	R19, R24
 	  CALL	convert
 	  LDI   R16, 0xC0         ;cursor beginning of 2nd line
-      RCALL command_wrt       ;send command code
+	  RCALL command_wrt       ;send command code
+
 	  RJMP dht_agn
+;================================================================
+turn_on:
+  SBI PORTC, 5			;set bit 5, turn on fan
+  RJMP done
+turn_off:
+  CBI PORTC, 5			;clear bit 5, turn off fan
+  RET
 ;================================================================
 LCD_init:
       LDI   R16, 0x33         ;init LCD for 4-bit data
@@ -154,7 +172,7 @@ w5:   SBIC  PINC, 1
       RET                 ;return to calling subroutine
 ;===============================================================
 convert:
-	  MOV R28, R19 ;move R18 value to R28
+	  MOV R28, R19 ;move R19 value to R28
 	  CPI R19, 228 ;check if value is equal or above 228
 	  BRSH above ;branch to solution for a bug at value above 227
 	  CPI R28, 100 ;check if value is in the hundreds
@@ -193,7 +211,7 @@ above: ;solution for a bug at value above 227
 	  RJMP tens ;branch to print the tens digit
 ;===============================================================
 div:
-	  ;---------------------;numerator = value of R18
+	  ;---------------------;numerator = value of R28
 	  ;---------------------;denominator = R29
 	  CLR R16 ;initialize quotient to 0
 ldiv:   CP R28, R29 ;subtract (num - denom) &
@@ -263,13 +281,10 @@ l7: DEC   R22         ;decrement inner loop
     DEC   R20         ;decrement outer loop
     BRNE  l5          ;loop if not zero
     RET               ;return to caller
-
 ;================================================================
 externalISR0:
-			SBRS R18, 0
-			RJMP intDone
-			loop:	
-			Sbi PortB,5			;Turn Led ON
-			sbi EIFR, INTF0
-			RJMP loop
-intDone:    Reti
+	IN	R16, SPSR
+    SBRS  R16, SPIF       ;wait for byte reception
+    RJMP  externalISR0    ;to complete
+	IN    R24, SPDR       ;i/p byte from data register
+	Reti
