@@ -34,7 +34,7 @@ This testing phase has a goal of verifying that all components of the systems ar
 
 The result presents the finding of the testing phase, which aimed to verify the functionality of components in the system. By primarily, focusing on the temperature sensors and user interface.
 
-![Final Product](/images/rangkaian-asli.png)
+![Final Product](/images/rangkaian-asli.jpg)
 
 ## V. Conclusion and future work
 
